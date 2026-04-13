@@ -1,10 +1,10 @@
 import requests
 import time
 import telebot
-import os
 
-TOKEN = os.getenv("TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+# 🔑 SEU TOKEN E CHAT_ID DIRETO (SEM ERRO)
+TOKEN = "8642961399:AAEtPcccUwt93IBVYEwBZAh0YcmoV6AxoZY"
+CHAT_ID = "5705254146"
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -38,7 +38,7 @@ def simular_resultado():
 def loop():
     global greens, reds
 
-    # 🔥 Mensagem inicial segura
+    # 🚀 AVISA QUE LIGOU
     try:
         bot.send_message(CHAT_ID, "🚀 BOT ONLINE")
     except Exception as e:
@@ -68,11 +68,5 @@ def loop():
         except Exception as e:
             print("Erro no loop:", e)
             time.sleep(10)
-
-def relatorio():
-    try:
-        bot.send_message(CHAT_ID, f"📊 RELATÓRIO\n\n✅ Greens: {greens}\n❌ Reds: {reds}")
-    except Exception as e:
-        print(e)
 
 loop()
