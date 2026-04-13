@@ -1,8 +1,9 @@
 import telebot
+import time
 
 TOKEN = "8642961399:AAEtPcccUwt93IBVYEwBZAh0YcmoV6AxoZY"
 
-bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -14,5 +15,10 @@ def responder(message):
 
 print("Bot rodando...")
 
-# 🔥 ESSA LINHA É A CHAVE
-bot.infinity_polling(none_stop=True, interval=0)
+# 🔥 LOOP ESTÁVEL (não crasha no Railway)
+while True:
+    try:
+        bot.polling(none_stop=True, interval=1, timeout=20)
+    except Exception as e:
+        print("Erro:", e)
+        time.sleep(5)
