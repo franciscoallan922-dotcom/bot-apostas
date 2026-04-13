@@ -2,8 +2,10 @@ import requests
 import time
 import telebot
 
-TOKEN = "SEU_TOKEN_TELEGRAM"
-CHAT_ID = "SEU_CHAT_ID"
+import os
+
+TOKEN = os.getenv("TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 bot = telebot.TeleBot(TOKEN)
 
