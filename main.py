@@ -8,6 +8,7 @@ TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 bot = telebot.TeleBot(TOKEN)
+bot.send_message(CHAT_ID, "✅ BOT ONLINE AGORA")
 
 greens = 0
 reds = 0
