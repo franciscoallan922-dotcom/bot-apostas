@@ -1,20 +1,13 @@
-import time
 import telebot
 
 TOKEN = "8642961399:AAEtPcccUwt93IBVYEwBZAh0YcmoV6AxoZY"
-CHAT_ID = 5705254146  # ⚠️ número, sem aspas
 
 bot = telebot.TeleBot(TOKEN)
 
-def loop():
-    while True:
-        try:
-            bot.send_message(CHAT_ID, "🚀 BOT ONLINE")
+@bot.message_handler(func=lambda message: True)
+def responder(message):
+    bot.reply_to(message, f"Seu ID: {message.chat.id}")
 
-            time.sleep(60)
+print("Bot rodando...")
 
-        except Exception as e:
-            print("Erro:", e)
-            time.sleep(10)
-
-loop()
+bot.infinity_polling()
