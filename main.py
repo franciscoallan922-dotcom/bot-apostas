@@ -9,7 +9,6 @@ import os
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# 🔥 SUA API JÁ COLOCADA
 API_KEY = "17ddec5174ecbb11adfd6fea8f212df9"
 
 bot = telebot.TeleBot(TOKEN)
@@ -20,7 +19,6 @@ jogos_enviados = set()
 entradas_futebol = 0
 MAX_FUTEBOL = 10
 
-# ================= SERVIDOR =================
 @app.route('/')
 def home():
     return "Bot rodando!"
@@ -38,6 +36,7 @@ def analisar_futebol():
     try:
         response = requests.get(url, headers=headers).json()
     except:
+        print("Erro na API")
         return
 
     if "response" not in response:
@@ -58,7 +57,7 @@ def analisar_futebol():
         if fixture_id in jogos_enviados:
             continue
 
-        if minuto is None or minuto < 25:
+        if minuto is None or minuto < 20:
             continue
 
         total_gols = gols_casa + gols_fora
@@ -96,11 +95,13 @@ def analisar_futebol():
             total_chutes = chutes_home + chutes_away
             total_ataques = ataques_home + ataques_away
 
+            print(f"{casa} x {fora} | Min:{minuto} | Chutes:{total_chutes} | Ataques:{total_ataques}")
+
         except:
             continue
 
-        # ================= FILTRO SNIPER =================
-        if total_chutes >= 3 and total_ataques >= 20:
+        # ================= FILTRO AJUSTADO =================
+        if total_chutes >= 2 and total_ataques >= 10:
 
             msg = f"""
 ⚽ SNIPER: OPORTUNIDADE DETECTADA
@@ -112,14 +113,18 @@ def analisar_futebol():
 • Chutes no gol: {chutes_home} x {chutes_away}
 • Ataques perigosos: {ataques_home} x {ataques_away}
 
-🔥 Leitura: Pressão ofensiva forte
+🔥 Leitura: Pressão ofensiva
 
 ✅ Sugestão: Over 1.5 Gols
 🏟️ Casa: Superbet
 """
 
-            if CHAT_ID:
-                bot.send_message(CHAT_ID, msg)
+            try:
+                if CHAT_ID:
+                    bot.send_message(CHAT_ID, msg)
+                    print("SINAL ENVIADO")
+            except Exception as e:
+                print("Erro Telegram:", e)
 
             jogos_enviados.add(fixture_id)
             entradas_futebol += 1
@@ -128,10 +133,11 @@ def analisar_futebol():
 def rodar_bot():
     while True:
         try:
+            print("🔄 Rodando análise...")
             analisar_futebol()
             time.sleep(90)
         except Exception as e:
-            print("Erro:", e)
+            print("Erro geral:", e)
             time.sleep(10)
 
 # ================= START =================
