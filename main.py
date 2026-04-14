@@ -4,6 +4,7 @@ import time
 import threading
 from flask import Flask
 import os
+from datetime import datetime
 
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
@@ -16,17 +17,16 @@ app = Flask(__name__)
 
 # ================= BANCA =================
 banca = 1000
-stake = banca * 0.02
-
 lucro_dia = 0
 
 # ================= CONTROLE =================
-jogos_enviados = set()
-entradas_ativas = {}
-
 greens = 0
 reds = 0
 total_entradas = 0
+
+jogos_enviados = set()
+jogos_pre_enviados = set()
+entradas_ativas = {}
 
 bot_ativo = True
 
@@ -44,7 +44,7 @@ LIGAS_PERMITIDAS = [
 
 @app.route('/')
 def home():
-    return "SNIPER ELITE AUTOMÁTICO"
+    return "SNIPER ELITE ABSURDO"
 
 # ================= FUNÇÃO =================
 def pegar_stat(stat, lista):
@@ -53,9 +53,56 @@ def pegar_stat(stat, lista):
             return item["value"] if item["value"] else 0
     return 0
 
+# ================= PRÉ-LIVE =================
+def analisar_pre_live():
+    headers = {"x-apisports-key": API_FOOTBALL}
+
+    try:
+        data = requests.get("https://v3.football.api-sports.io/fixtures?next=50", headers=headers).json()
+    except:
+        return
+
+    if "response" not in data:
+        return
+
+    agora = datetime.utcnow()
+
+    for jogo in data["response"]:
+        fixture_id = jogo["fixture"]["id"]
+        liga_id = jogo["league"]["id"]
+
+        if liga_id not in LIGAS_PERMITIDAS:
+            continue
+
+        if fixture_id in jogos_pre_enviados:
+            continue
+
+        data_jogo = datetime.fromisoformat(jogo["fixture"]["date"].replace("Z", ""))
+        diff = (data_jogo - agora).total_seconds() / 60
+
+        if 0 < diff <= 30:
+
+            stake_pre = round((banca * 0.02) / 2, 2)
+
+            casa = jogo["teams"]["home"]["name"]
+            fora = jogo["teams"]["away"]["name"]
+
+            bot.send_message(CHAT_ID, f"""
+⚽ SNIPER PRÉ-LIVE
+
+⚔️ {casa} vs {fora}
+⏰ {int(diff)} min para iniciar
+
+🔥🔥🔥
+
+💰 Stake: R${stake_pre}
+""")
+
+            jogos_pre_enviados.add(fixture_id)
+
 # ================= FUTEBOL =================
 def analisar_futebol():
-    global total_entradas, bot_ativo
+    global total_entradas, banca
 
     if not bot_ativo:
         return
@@ -71,10 +118,6 @@ def analisar_futebol():
         return
 
     for jogo in data["response"]:
-
-        if not bot_ativo:
-            return
-
         liga_id = jogo["league"]["id"]
         if liga_id not in LIGAS_PERMITIDAS:
             continue
@@ -85,13 +128,12 @@ def analisar_futebol():
         if fixture_id in jogos_enviados or minuto is None:
             continue
 
-        casa = jogo["teams"]["home"]["name"]
-        fora = jogo["teams"]["away"]["name"]
-
         gols_total = (jogo["goals"]["home"] or 0) + (jogo["goals"]["away"] or 0)
-
         if gols_total > 2:
             continue
+
+        casa = jogo["teams"]["home"]["name"]
+        fora = jogo["teams"]["away"]["name"]
 
         try:
             stats = requests.get(
@@ -110,44 +152,69 @@ def analisar_futebol():
         chutes = pegar_stat("Shots on Goal", home_stats) + pegar_stat("Shots on Goal", away_stats)
         ataques = pegar_stat("Dangerous Attacks", home_stats) + pegar_stat("Dangerous Attacks", away_stats)
 
-        if ataques == 0:
+        # ===== xG SIMULADO =====
+        xg = (chutes * 0.3) + (ataques * 0.04)
+
+        if xg < 1.8:
             continue
 
-        # confiança
-        if chutes >= 6 and ataques >= 25:
-            confianca = "🔥🔥🔥🔥🔥 ALTA"
+        if xg >= 2.5:
+            confianca = "🚨🔥🔥🔥🔥🔥 PREMIUM"
         else:
-            confianca = "🔥🔥🔥 MÉDIA"
+            confianca = "🔥🔥🔥"
 
         if (20 <= minuto <= 40 or 55 <= minuto <= 75):
-            if chutes >= 4 and ataques >= 15:
 
-                global stake
-                stake = round(banca * 0.02, 2)
+            stake = round(banca * 0.02, 2)
 
-                msg = f"""
-⚽ SNIPER ELITE
+            bot.send_message(CHAT_ID, f"""
+⚽ SNIPER ELITE PRO
 
 ⚔️ {casa} vs {fora}
 ⏰ {minuto}'
 
-📊 Pressão:
-• Chutes: {chutes}
-• Ataques: {ataques}
+📊 Chutes: {chutes}
+📊 Ataques: {ataques}
+
+📈 xG: {round(xg,2)}
 
 {confianca}
 
 💰 Stake: R${stake}
-"""
-                bot.send_message(CHAT_ID, msg + "\n\n")
+""")
 
-                jogos_enviados.add(fixture_id)
-                total_entradas += 1
+            jogos_enviados.add(fixture_id)
+            total_entradas += 1
 
-                entradas_ativas[fixture_id] = {
-                    "casa": casa,
-                    "fora": fora
-                }
+            entradas_ativas[fixture_id] = {
+                "casa": casa,
+                "fora": fora,
+                "stake": stake
+            }
+
+# ================= BASQUETE =================
+def analisar_basquete():
+    # EXEMPLO SIMULADO (você pode integrar API depois)
+    pontos = 160
+    minutos = 30
+
+    ritmo = pontos / minutos
+    proj = ritmo * 48
+
+    linha_over = round(proj - 12)
+    linha_under = round(proj + 12)
+
+    bot.send_message(CHAT_ID, f"""
+🏀 SNIPER ELITE PRO MAX
+
+📈 Projeção: {round(proj)}
+🎯 Linha ideal:
+
+👉 Over {linha_over}.5
+👉 Under {linha_under}.5
+
+🔥🔥🔥🔥
+""")
 
 # ================= RESULTADOS =================
 def verificar_resultados():
@@ -164,7 +231,7 @@ def verificar_resultados():
                     headers=headers
                 ).json()
 
-                if "response" not in data or len(data["response"]) == 0:
+                if "response" not in data:
                     continue
 
                 jogo = data["response"][0]
@@ -175,40 +242,31 @@ def verificar_resultados():
                 entrada = entradas_ativas[fixture_id]
 
                 if gols >= 2:
-                    lucro = stake * 0.75
+                    lucro = entrada["stake"] * 0.75
                     banca += lucro
                     lucro_dia += lucro
 
-                    bot.send_message(CHAT_ID, f"✅ GREEN\n\n⚔️ {entrada['casa']} vs {entrada['fora']}\n💰 +R${round(lucro,2)}\n\n")
+                    bot.send_message(CHAT_ID, f"✅ GREEN +R${round(lucro,2)}")
 
                     greens += 1
                     del entradas_ativas[fixture_id]
 
                 elif status == "FT":
-                    banca -= stake
-                    lucro_dia -= stake
+                    banca -= entrada["stake"]
+                    lucro_dia -= entrada["stake"]
 
-                    bot.send_message(CHAT_ID, f"❌ RED\n\n⚔️ {entrada['casa']} vs {entrada['fora']}\n💰 -R${stake}\n\n")
+                    bot.send_message(CHAT_ID, f"❌ RED -R${entrada['stake']}")
 
                     reds += 1
                     del entradas_ativas[fixture_id]
 
-            # ================= STOP =================
             if lucro_dia >= 60:
-                bot.send_message(CHAT_ID, f"""
-🎯 META BATIDA!
-
-💰 Lucro do dia: +R${round(lucro_dia,2)}
-""")
+                bot.send_message(CHAT_ID, "🎯 META BATIDA")
                 enviar_relatorio()
                 bot_ativo = False
 
             if lucro_dia <= -60:
-                bot.send_message(CHAT_ID, f"""
-🛑 STOP LOSS
-
-💰 Resultado: R${round(lucro_dia,2)}
-""")
+                bot.send_message(CHAT_ID, "🛑 STOP LOSS")
                 enviar_relatorio()
                 bot_ativo = False
 
@@ -219,46 +277,35 @@ def verificar_resultados():
 
 # ================= RELATÓRIO =================
 def enviar_relatorio():
-    taxa = (greens / total_entradas * 100) if total_entradas > 0 else 0
-    resultado = "POSITIVO" if lucro_dia >= 0 else "NEGATIVO"
+    taxa = (greens / total_entradas * 100) if total_entradas else 0
 
     bot.send_message(CHAT_ID, f"""
-📊 RELATÓRIO DO DIA
+📊 RELATÓRIO
 
-🎯 Entradas: {total_entradas}
-✅ Greens: {greens}
-❌ Reds: {reds}
-📈 Assertividade: {round(taxa,2)}%
-💰 Resultado: {resultado}
-💵 Banca atual: R${round(banca,2)}
+Entradas: {total_entradas}
+Greens: {greens}
+Reds: {reds}
+Assertividade: {round(taxa,2)}%
+Banca: R${round(banca,2)}
 """)
-
-# ================= FINAL DO DIA =================
-def relatorio_final():
-    while True:
-        if time.strftime("%H:%M") == "00:00":
-            enviar_relatorio()
-        time.sleep(60)
 
 # ================= HEARTBEAT =================
 def heartbeat():
     while True:
-        bot.send_message(CHAT_ID, "🤖 SNIPER ELITE ONLINE E FUNCIONANDO\n\n")
-        time.sleep(1200)
+        bot.send_message(CHAT_ID, "🤖 BOT ONLINE")
+        time.sleep(3600)
 
 # ================= LOOP =================
 def loop():
     while True:
-        try:
-            analisar_futebol()
-            time.sleep(60)
-        except:
-            time.sleep(10)
+        analisar_pre_live()
+        analisar_futebol()
+        analisar_basquete()
+        time.sleep(60)
 
 # ================= START =================
 threading.Thread(target=loop).start()
 threading.Thread(target=verificar_resultados).start()
-threading.Thread(target=relatorio_final).start()
 threading.Thread(target=heartbeat).start()
 
 bot.infinity_polling()
