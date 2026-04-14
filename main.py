@@ -5,30 +5,54 @@ import threading
 from flask import Flask
 import os
 
+# ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-API_KEY = "17ddec5174ecbb11adfd6fea8f212df9"
+API_FOOTBALL = "17ddec5174ecbb11adfd6fea8f212df9"
+API_ODDS = "SUA_ODDS_API_AQUI"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
+# ================= CONTROLE =================
 jogos_enviados = set()
+greens = 0
+reds = 0
 entradas_futebol = 0
 MAX_FUTEBOL = 10
 
+# ================= LIGAS =================
+LIGAS_PERMITIDAS = [
+    39,40,41,45,48,
+    140,78,135,61,66,
+    88,94,
+    2,3,848,
+    71,72,73,
+    13,11,
+    1,4,5,6,
+    307
+]
+
 @app.route('/')
 def home():
-    return "Bot rodando!"
+    return "ELITE SNIPER ONLINE"
 
+# ================= FUNÇÃO =================
+def pegar_stat(stat, lista):
+    for item in lista:
+        if item["type"] == stat:
+            return item["value"] if item["value"] else 0
+    return 0
+
+# ================= FUTEBOL =================
 def analisar_futebol():
     global entradas_futebol
 
-    url = "https://v3.football.api-sports.io/fixtures?live=all"
-    headers = {"x-apisports-key": API_KEY}
+    headers = {"x-apisports-key": API_FOOTBALL}
 
     try:
-        data = requests.get(url, headers=headers).json()
+        data = requests.get("https://v3.football.api-sports.io/fixtures?live=all", headers=headers).json()
     except:
         return
 
@@ -40,13 +64,14 @@ def analisar_futebol():
         if entradas_futebol >= MAX_FUTEBOL:
             return
 
+        liga_id = jogo["league"]["id"]
+        if liga_id not in LIGAS_PERMITIDAS:
+            continue
+
         fixture_id = jogo["fixture"]["id"]
         minuto = jogo["fixture"]["status"]["elapsed"]
 
-        if fixture_id in jogos_enviados:
-            continue
-
-        if minuto is None or minuto < 20:
+        if fixture_id in jogos_enviados or minuto is None:
             continue
 
         casa = jogo["teams"]["home"]["name"]
@@ -57,74 +82,157 @@ def analisar_futebol():
         if gols > 2:
             continue
 
-        stats_url = f"https://v3.football.api-sports.io/fixtures/statistics?fixture={fixture_id}"
-
+        # ================= STATS =================
         try:
-            stats = requests.get(stats_url, headers=headers).json()
+            stats = requests.get(
+                f"https://v3.football.api-sports.io/fixtures/statistics?fixture={fixture_id}",
+                headers=headers
+            ).json()
         except:
             continue
 
         if "response" not in stats or len(stats["response"]) < 2:
             continue
 
-        def pegar(stat, lista):
-            for item in lista:
-                if item["type"] == stat:
-                    return item["value"] if item["value"] else 0
-            return 0
+        home_stats = stats["response"][0]["statistics"]
+        away_stats = stats["response"][1]["statistics"]
+
+        chutes_home = pegar_stat("Shots on Goal", home_stats)
+        chutes_away = pegar_stat("Shots on Goal", away_stats)
+
+        ataques_home = pegar_stat("Dangerous Attacks", home_stats)
+        ataques_away = pegar_stat("Dangerous Attacks", away_stats)
+
+        total_chutes = chutes_home + chutes_away
+        total_ataques = ataques_home + ataques_away
+
+        # ❌ evita jogo morto
+        if total_ataques < 8:
+            continue
+
+        print(f"{casa} x {fora} | {minuto} | C:{total_chutes} | A:{total_ataques}")
+
+        # ================= 1º TEMPO =================
+        if 20 <= minuto <= 40:
+            if total_chutes >= 3 and total_ataques >= 12:
+
+                msg = f"""
+⚽ SNIPER ELITE 1T
+
+⚔️ {casa} vs {fora}
+⏰ {minuto}'
+
+📊 Pressão:
+• Chutes: {chutes_home} x {chutes_away}
+• Ataques: {ataques_home} x {ataques_away}
+
+🔥 Entrada antecipada
+
+✅ Over 1.5 Gols
+"""
+                bot.send_message(CHAT_ID, msg)
+                jogos_enviados.add(fixture_id)
+                entradas_futebol += 1
+
+        # ================= 2º TEMPO =================
+        elif 55 <= minuto <= 75:
+            if total_chutes >= 5 and total_ataques >= 25:
+
+                msg = f"""
+⚽ SNIPER ELITE 2T
+
+⚔️ {casa} vs {fora}
+⏰ {minuto}'
+
+📊 Pressão:
+• Chutes: {chutes_home} x {chutes_away}
+• Ataques: {ataques_home} x {ataques_away}
+
+🔥 Gol maduro
+
+✅ Over 1.5 Gols
+"""
+                bot.send_message(CHAT_ID, msg)
+                jogos_enviados.add(fixture_id)
+                entradas_futebol += 1
+
+# ================= BASQUETE =================
+def analisar_basquete():
+    if "SUA_ODDS_API_AQUI" in API_ODDS:
+        return
+
+    try:
+        data = requests.get(
+            f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=totals&apiKey={API_ODDS}"
+        ).json()
+    except:
+        return
+
+    for jogo in data:
+
+        if jogo["id"] in jogos_enviados:
+            continue
 
         try:
-            home_stats = stats["response"][0]["statistics"]
-            away_stats = stats["response"][1]["statistics"]
-
-            chutes = pegar("Shots on Goal", home_stats) + pegar("Shots on Goal", away_stats)
-            ataques = pegar("Dangerous Attacks", home_stats) + pegar("Dangerous Attacks", away_stats)
-
+            linha = jogo["bookmakers"][0]["markets"][0]["outcomes"][0]["point"]
         except:
             continue
 
-        print(f"{casa} x {fora} | Min:{minuto} | Chutes:{chutes} | Ataques:{ataques}")
-
-        # 🔥 NOVA LÓGICA (FLEXÍVEL)
-        if chutes >= 2 or ataques >= 10:
+        if linha and linha < 228:
 
             msg = f"""
-⚽ SNIPER: OPORTUNIDADE DETECTADA
+🏀 SNIPER ELITE NBA
 
-⚔️ {casa} vs {fora}
-⏰ Minuto: {minuto}
+⚔️ {jogo['home_team']} vs {jogo['away_team']}
 
-📊 Pressão:
-• Chutes no gol: {chutes}
-• Ataques perigosos: {ataques}
+🔥 Linha com valor
 
-🔥 Leitura: Pressão ofensiva
-
-✅ Sugestão: Over 1.5 Gols
-🏟️ Casa: Superbet
+✅ Over {linha} pontos
 """
+            bot.send_message(CHAT_ID, msg)
+            jogos_enviados.add(jogo["id"])
 
-            try:
-                if CHAT_ID:
-                    bot.send_message(CHAT_ID, msg)
-                    print("SINAL ENVIADO")
-            except:
-                pass
+# ================= RELATÓRIO =================
+def relatorio():
+    global greens, reds
 
-            jogos_enviados.add(fixture_id)
-            entradas_futebol += 1
+    while True:
+        try:
+            if time.strftime("%H:%M") == "00:00":
+                total = greens + reds
+                taxa = (greens / total * 100) if total > 0 else 0
 
+                msg = f"""
+📊 RELATÓRIO ELITE
+
+✅ Greens: {greens}
+❌ Reds: {reds}
+📈 Assertividade: {round(taxa,2)}%
+"""
+                bot.send_message(CHAT_ID, msg)
+
+                greens = 0
+                reds = 0
+
+            time.sleep(60)
+        except:
+            time.sleep(10)
+
+# ================= LOOP =================
 def loop():
     while True:
         try:
-            print("🔄 Analisando jogos...")
+            print("🚀 ELITE rodando...")
             analisar_futebol()
+            analisar_basquete()
             time.sleep(60)
         except Exception as e:
             print("Erro:", e)
             time.sleep(10)
 
+# ================= START =================
 threading.Thread(target=loop).start()
+threading.Thread(target=relatorio).start()
 
 bot.infinity_polling()
 app.run(host="0.0.0.0", port=8080)
