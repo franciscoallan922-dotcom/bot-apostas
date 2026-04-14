@@ -17,8 +17,6 @@ app = Flask(__name__)
 
 # ================= CONTROLE =================
 jogos_enviados = set()
-greens = 0
-reds = 0
 entradas_futebol = 0
 MAX_FUTEBOL = 10
 
@@ -106,15 +104,16 @@ def analisar_futebol():
         total_chutes = chutes_home + chutes_away
         total_ataques = ataques_home + ataques_away
 
-        # ❌ evita jogo morto
-        if total_ataques < 8:
-            continue
-
         print(f"{casa} x {fora} | {minuto} | C:{total_chutes} | A:{total_ataques}")
+
+        # ================= AJUSTE ELITE =================
+        if total_ataques == 0:
+            if total_chutes < 4:
+                continue
 
         # ================= 1º TEMPO =================
         if 20 <= minuto <= 40:
-            if total_chutes >= 3 and total_ataques >= 12:
+            if total_chutes >= 3 or total_ataques >= 12:
 
                 msg = f"""
 ⚽ SNIPER ELITE 1T
@@ -136,7 +135,7 @@ def analisar_futebol():
 
         # ================= 2º TEMPO =================
         elif 55 <= minuto <= 75:
-            if total_chutes >= 5 and total_ataques >= 25:
+            if total_chutes >= 4 or total_ataques >= 20:
 
                 msg = f"""
 ⚽ SNIPER ELITE 2T
@@ -192,31 +191,15 @@ def analisar_basquete():
             bot.send_message(CHAT_ID, msg)
             jogos_enviados.add(jogo["id"])
 
-# ================= RELATÓRIO =================
-def relatorio():
-    global greens, reds
-
+# ================= HEARTBEAT =================
+def heartbeat():
     while True:
         try:
-            if time.strftime("%H:%M") == "00:00":
-                total = greens + reds
-                taxa = (greens / total * 100) if total > 0 else 0
-
-                msg = f"""
-📊 RELATÓRIO ELITE
-
-✅ Greens: {greens}
-❌ Reds: {reds}
-📈 Assertividade: {round(taxa,2)}%
-"""
-                bot.send_message(CHAT_ID, msg)
-
-                greens = 0
-                reds = 0
-
-            time.sleep(60)
+            msg = "🤖 SNIPER ELITE ONLINE E FUNCIONANDO"
+            bot.send_message(CHAT_ID, msg)
+            time.sleep(1200)  # 20 minutos
         except:
-            time.sleep(10)
+            time.sleep(60)
 
 # ================= LOOP =================
 def loop():
@@ -232,7 +215,7 @@ def loop():
 
 # ================= START =================
 threading.Thread(target=loop).start()
-threading.Thread(target=relatorio).start()
+threading.Thread(target=heartbeat).start()
 
 bot.infinity_polling()
 app.run(host="0.0.0.0", port=8080)
