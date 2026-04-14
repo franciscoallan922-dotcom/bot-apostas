@@ -1,153 +1,208 @@
 import telebot
+import requests
 import time
 import threading
-import requests
 from flask import Flask
 import os
-from datetime import datetime
 
+# ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-ODDS_API_KEY = "ce9cc9914cdc3a7d27e30f663150addd"
+API_KEY = "SUA_API_AQUI"  # 🔥 COLOCA SUA API FOOTBALL AQUI
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-ENVIADOS = set()
+# ================= CONTROLE =================
+jogos_enviados = set()
+greens = 0
+reds = 0
+entradas_futebol = 0
+MAX_FUTEBOL = 10
 
+# ================= SERVIDOR =================
 @app.route('/')
 def home():
-    return "Bot online 🚀"
+    return "Bot rodando!"
 
-# =========================
-# FILTRO CORRETO (SÓ AO VIVO)
-# =========================
-def jogo_ativo(jogo):
-    try:
-        agora = datetime.utcnow()
-        hora_jogo = datetime.fromisoformat(jogo["commence_time"].replace("Z", ""))
+# ================= FUTEBOL =================
+def analisar_futebol():
+    global entradas_futebol
 
-        diff = (agora - hora_jogo).total_seconds()
+    url = "https://v3.football.api-sports.io/fixtures?live=all"
 
-        # jogo já começou e ainda está rolando (~2h30)
-        return 0 <= diff <= 9000
+    headers = {
+        "x-apisports-key": API_KEY
+    }
 
-    except:
-        return False
+    response = requests.get(url, headers=headers).json()
 
-# =========================
-# BUSCAR FUTEBOL
-# =========================
-def buscar_futebol():
-    url = f"https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey={ODDS_API_KEY}&regions=eu&markets=totals"
-    
-    try:
-        r = requests.get(url)
-        data = r.json()
-    except:
-        print("Erro ao buscar API")
-        return []
+    if "response" not in response:
+        return
 
-    sinais = []
+    for jogo in response["response"]:
 
-    print(f"Jogos recebidos: {len(data)}")
+        if entradas_futebol >= MAX_FUTEBOL:
+            return
 
-    for jogo in data:
+        fixture_id = jogo["fixture"]["id"]
+        minuto = jogo["fixture"]["status"]["elapsed"]
+        casa = jogo["teams"]["home"]["name"]
+        fora = jogo["teams"]["away"]["name"]
+        gols_casa = jogo["goals"]["home"]
+        gols_fora = jogo["goals"]["away"]
+
+        if fixture_id in jogos_enviados:
+            continue
+
+        if minuto is None or minuto < 25:
+            continue
+
+        total_gols = gols_casa + gols_fora
+
+        if total_gols > 2:
+            continue
+
+        # ================= ESTATÍSTICAS =================
+        stats_url = f"https://v3.football.api-sports.io/fixtures/statistics?fixture={fixture_id}"
+        stats = requests.get(stats_url, headers=headers).json()
+
+        if "response" not in stats or len(stats["response"]) < 2:
+            continue
+
         try:
-            if not jogo_ativo(jogo):
-                continue
+            home_stats = stats["response"][0]["statistics"]
+            away_stats = stats["response"][1]["statistics"]
 
-            home = jogo["home_team"]
-            away = jogo["away_team"]
-            liga = jogo["sport_title"]
+            def pegar(stat, lista):
+                for item in lista:
+                    if item["type"] == stat:
+                        return item["value"] if item["value"] else 0
+                return 0
 
-            for book in jogo.get("bookmakers", []):
-                for market in book.get("markets", []):
-                    if market["key"] == "totals":
+            chutes_home = pegar("Shots on Goal", home_stats)
+            chutes_away = pegar("Shots on Goal", away_stats)
 
-                        for o in market["outcomes"]:
-                            linha = o.get("point")
-                            odds = o.get("price")
-                            tipo = o.get("name")
+            ataques_home = pegar("Dangerous Attacks", home_stats)
+            ataques_away = pegar("Dangerous Attacks", away_stats)
 
-                            # filtro profissional
-                            if odds and 1.50 <= odds <= 1.90:
-
-                                if tipo == "Over" and linha and linha <= 2.5:
-                                    sinais.append((home, away, liga, linha, odds))
+            total_chutes = chutes_home + chutes_away
+            total_ataques = ataques_home + ataques_away
 
         except:
             continue
 
-    return sinais
+        # ================= FILTRO SNIPER =================
+        if total_chutes >= 3 and total_ataques >= 20:
 
-# =========================
-# ENVIO PROFISSIONAL
-# =========================
-def enviar_sinal(home, away, liga, linha, odds):
-    chave = f"{home}-{away}-{linha}"
-
-    if chave in ENVIADOS:
-        return
-
-    msg = f"""
+            msg = f"""
 ⚽ SNIPER: OPORTUNIDADE DETECTADA
 
-⚔️ Jogo: {home} vs {away}  
-🏆 Liga: {liga}  
-⏰ Status: AO VIVO  
+⚔️ {casa} vs {fora}
+⏰ Minuto: {minuto}
 
-📊 Linha: Over {linha}  
-🔥 Leitura: Pressão ofensiva + tendência de gols  
+📊 Pressão:
+• Chutes no gol: {chutes_home} x {chutes_away}
+• Ataques perigosos: {ataques_home} x {ataques_away}
 
-✅ Sugestão: Over {linha} Gols  
-💰 Odd: {odds}
+🔥 Leitura: Pressão ofensiva
+
+✅ Sugestão: Over 1.5 Gols
 🏟️ Casa: Superbet
 """
 
-    try:
-        bot.send_message(CHAT_ID, msg)
-        print(f"Enviado: {home} x {away}")
-        ENVIADOS.add(chave)
-    except Exception as e:
-        print("Erro ao enviar:", e)
+            if CHAT_ID:
+                bot.send_message(CHAT_ID, msg)
 
-# =========================
-# LOOP PRINCIPAL
-# =========================
-def loop():
+            jogos_enviados.add(fixture_id)
+            entradas_futebol += 1
+
+# ================= BASQUETE =================
+def analisar_basquete():
+    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=totals&apiKey=SUA_ODDS_API"
+
+    response = requests.get(url).json()
+
+    for jogo in response:
+
+        jogo_id = jogo["id"]
+        times = f"{jogo['home_team']} vs {jogo['away_team']}"
+
+        if jogo_id in jogos_enviados:
+            continue
+
+        try:
+            pontos = jogo["bookmakers"][0]["markets"][0]["outcomes"]
+            linha = pontos[0]["point"]
+        except:
+            continue
+
+        # 🔥 SIMULAÇÃO DE RITMO (não tem stats free)
+        # entrada só pra NBA com linha menor
+        if linha and linha < 230:
+
+            msg = f"""
+🏀 SNIPER: BASQUETE LIVE
+
+⚔️ {times}
+⏰ Momento: Meio do 3º quarto
+
+📊 Linha: {linha}
+
+🔥 Ritmo: Alto (simulado)
+
+✅ Sugestão: Over {linha} Pontos
+🏟️ Casa: Superbet
+"""
+
+            if CHAT_ID:
+                bot.send_message(CHAT_ID, msg)
+
+            jogos_enviados.add(jogo_id)
+
+# ================= LOOP =================
+def rodar_bot():
     while True:
         try:
-            print("🔄 Buscando jogos AO VIVO...")
-
-            sinais = buscar_futebol()
-
-            if not sinais:
-                print("Nenhuma oportunidade agora")
-
-            for home, away, liga, linha, odds in sinais:
-                enviar_sinal(home, away, liga, linha, odds)
-
-            time.sleep(120)
-
+            analisar_futebol()
+            analisar_basquete()
+            time.sleep(90)
         except Exception as e:
-            print("Erro geral:", e)
+            print("Erro:", e)
             time.sleep(10)
 
-# =========================
-# TELEGRAM
-# =========================
-def iniciar_bot():
-    bot.infinity_polling()
+# ================= RELATÓRIO =================
+def relatorio():
+    global greens, reds
 
-# =========================
-# THREADS
-# =========================
-threading.Thread(target=loop).start()
-threading.Thread(target=iniciar_bot).start()
+    while True:
+        try:
+            if time.strftime("%H:%M") == "00:00":
+                total = greens + reds
+                taxa = round((greens / total) * 100, 2) if total > 0 else 0
 
-# =========================
-# SERVIDOR (RAILWAY)
-# =========================
+                msg = f"""
+📊 RELATÓRIO DO DIA
+
+✅ Greens: {greens}
+❌ Reds: {reds}
+📈 Assertividade: {taxa}%
+"""
+
+                if CHAT_ID:
+                    bot.send_message(CHAT_ID, msg)
+
+                greens = 0
+                reds = 0
+
+            time.sleep(60)
+        except:
+            time.sleep(10)
+
+# ================= START =================
+threading.Thread(target=rodar_bot).start()
+threading.Thread(target=relatorio).start()
+
+bot.infinity_polling()
 app.run(host="0.0.0.0", port=8080)
