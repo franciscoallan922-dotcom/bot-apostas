@@ -4,6 +4,7 @@ import threading
 import requests
 from flask import Flask
 import os
+from datetime import datetime
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -29,6 +30,17 @@ LIGAS_PERMITIDAS = [
 def home():
     return "Bot online"
 
+# ⏱️ FILTRO DE TEMPO (AO VIVO)
+def jogo_ativo(jogo):
+    try:
+        agora = datetime.utcnow()
+        hora_jogo = datetime.fromisoformat(jogo["commence_time"].replace("Z", ""))
+        diferenca = abs((hora_jogo - agora).total_seconds())
+
+        return diferenca <= 7200  # até 2h
+    except:
+        return False
+
 # ⚽ FUTEBOL PROFISSIONAL
 def buscar_futebol():
     url = f"https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey={ODDS_API_KEY}&regions=eu&markets=totals"
@@ -38,6 +50,9 @@ def buscar_futebol():
 
     for jogo in data:
         try:
+            if not jogo_ativo(jogo):
+                continue
+
             liga = jogo.get("sport_title", "")
             if not any(l in liga for l in LIGAS_PERMITIDAS):
                 continue
@@ -54,14 +69,13 @@ def buscar_futebol():
                             odds = o["price"]
                             tipo = o["name"]
 
-                            # 🎯 NOVA LÓGICA
                             if 1.50 <= odds <= 1.80:
 
-                                # OVER 1.5 (principal)
+                                # OVER 1.5
                                 if tipo == "Over" and linha == 1.5:
                                     sinais.append((home, away, liga, linha, odds))
 
-                                # UNDER 3.5 (seguro)
+                                # UNDER 3.5+
                                 if tipo == "Under" and linha >= 3.5:
                                     sinais.append((home, away, liga, linha, odds))
 
@@ -70,7 +84,7 @@ def buscar_futebol():
 
     return sinais
 
-# 🏀 BASQUETE PROFISSIONAL
+# 🏀 BASQUETE
 def buscar_basquete():
     url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={ODDS_API_KEY}&regions=eu&markets=totals"
     data = requests.get(url).json()
@@ -79,6 +93,9 @@ def buscar_basquete():
 
     for jogo in data:
         try:
+            if not jogo_ativo(jogo):
+                continue
+
             home = jogo["home_team"]
             away = jogo["away_team"]
 
@@ -90,7 +107,6 @@ def buscar_basquete():
                             linha = o["point"]
                             odds = o["price"]
 
-                            # 🎯 FOCO SÓ OVER
                             if 1.50 <= odds <= 1.75:
                                 sinais.append((home, away, linha, odds))
 
@@ -143,7 +159,7 @@ def enviar_basquete(home, away, linha, odds):
     bot.send_message(CHAT_ID, msg)
     ENVIADOS.add(chave)
 
-# 🔁 LOOP
+# 🔁 LOOP PRINCIPAL
 def loop():
     while True:
         try:
@@ -159,7 +175,7 @@ def loop():
             time.sleep(90)
 
         except Exception as e:
-            print(e)
+            print("Erro:", e)
             time.sleep(10)
 
 # 🚀 START
