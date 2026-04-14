@@ -37,7 +37,7 @@ def jogo_ativo(jogo):
         hora_jogo = datetime.fromisoformat(jogo["commence_time"].replace("Z", ""))
         diferenca = abs((hora_jogo - agora).total_seconds())
 
-        return diferenca <= 7200  # até 2h
+        return diferenca <= 20000  # até 2h
     except:
         return False
 
