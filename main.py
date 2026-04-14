@@ -5,26 +5,16 @@ import requests
 from flask import Flask
 import os
 
-# 🔐 CONFIG
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 ODDS_API_KEY = "ce9cc9914cdc3a7d27e30f663150addd"
-FOOTBALL_API_KEY = "17ddec5174ecbb11adfd6fea8f212df9"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-greens = 0
-reds = 0
-ENVIADOS = {}
+ENVIADOS = set()
 
-# 🌐 manter Railway vivo
-@app.route('/')
-def home():
-    return "Bot online"
-
-# 🧠 LIGAS PERMITIDAS
 LIGAS_PERMITIDAS = [
     "Premier League",
     "La Liga",
@@ -35,7 +25,11 @@ LIGAS_PERMITIDAS = [
     "Brazil Serie B"
 ]
 
-# ⚽ FUTEBOL
+@app.route('/')
+def home():
+    return "Bot online"
+
+# ⚽ FUTEBOL PROFISSIONAL
 def buscar_futebol():
     url = f"https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey={ODDS_API_KEY}&regions=eu&markets=totals"
     data = requests.get(url).json()
@@ -45,7 +39,6 @@ def buscar_futebol():
     for jogo in data:
         try:
             liga = jogo.get("sport_title", "")
-
             if not any(l in liga for l in LIGAS_PERMITIDAS):
                 continue
 
@@ -61,23 +54,23 @@ def buscar_futebol():
                             odds = o["price"]
                             tipo = o["name"]
 
-                            # 🎯 CONSERVADOR
-                            if 1.50 <= odds <= 1.75:
+                            # 🎯 NOVA LÓGICA
+                            if 1.50 <= odds <= 1.80:
 
-                                # OVER seguro
-                                if tipo == "Over" and linha <= 1.5:
-                                    sinais.append((home, away, liga, linha, tipo, odds))
+                                # OVER 1.5 (principal)
+                                if tipo == "Over" and linha == 1.5:
+                                    sinais.append((home, away, liga, linha, odds))
 
-                                # UNDER seguro
+                                # UNDER 3.5 (seguro)
                                 if tipo == "Under" and linha >= 3.5:
-                                    sinais.append((home, away, liga, linha, tipo, odds))
+                                    sinais.append((home, away, liga, linha, odds))
 
         except:
             continue
 
     return sinais
 
-# 🏀 BASQUETE
+# 🏀 BASQUETE PROFISSIONAL
 def buscar_basquete():
     url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={ODDS_API_KEY}&regions=eu&markets=totals"
     data = requests.get(url).json()
@@ -96,9 +89,9 @@ def buscar_basquete():
                         for o in market["outcomes"]:
                             linha = o["point"]
                             odds = o["price"]
-                            tipo = o["name"]
 
-                            if 1.50 <= odds <= 1.75 and tipo == "Over":
+                            # 🎯 FOCO SÓ OVER
+                            if 1.50 <= odds <= 1.75:
                                 sinais.append((home, away, linha, odds))
 
         except:
@@ -106,7 +99,7 @@ def buscar_basquete():
 
     return sinais
 
-# 📩 ENVIO PADRÃO SNIPER
+# 📩 FUTEBOL MSG
 def enviar_futebol(home, away, liga, linha, odds):
     chave = f"{home}-{away}-{linha}"
 
@@ -116,31 +109,19 @@ def enviar_futebol(home, away, liga, linha, odds):
     msg = f"""
 ⚽ SNIPER: OPORTUNIDADE DETECTADA
 
-⚔️ Jogo: {home} x {away}
-🏆 Liga: {liga}
-⏰ Momento: AO VIVO
+⚔️ {home} x {away}
+🏆 {liga}
 
-🚩 Tendência: Linha {linha}
+🎯 Entrada: Over {linha} Gols
+💰 Odd: {odds}
 
-🥅 Leitura: Jogo com potencial ofensivo
-
-✅ Sugestão:
-➡️ Over {linha} Gols
-
-💰 Odds: {odds}
-🏟️ Casa: Superbet
-🔥 Confiança: ALTA
+🔥 Estratégia: Conservador Profissional
 """
 
     bot.send_message(CHAT_ID, msg)
+    ENVIADOS.add(chave)
 
-    ENVIADOS[chave] = {
-        "tipo": "futebol",
-        "linha": linha,
-        "jogo": f"{home} x {away}",
-        "verificado": False
-    }
-
+# 📩 BASQUETE MSG
 def enviar_basquete(home, away, linha, odds):
     chave = f"{home}-{away}-{linha}"
 
@@ -150,79 +131,17 @@ def enviar_basquete(home, away, linha, odds):
     msg = f"""
 🏀 SNIPER: BASQUETE LIVE
 
-⚔️ Jogo: {home} x {away}
-🏟️ Situação: AO VIVO
+⚔️ {home} x {away}
 
-📊 Linha atual: {linha}
+📊 Linha: {linha}
 
-🔥 Análise:
-Ritmo projetado acima da linha
+🔥 Entrada: Over (ritmo projetado)
 
-✅ Sugestão:
-➡️ Over {linha} Pontos
-
-💰 Odds: {odds}
-🏟️ Casa: Superbet
-🔥 Confiança: ALTA
+💰 Odd: {odds}
 """
 
     bot.send_message(CHAT_ID, msg)
-
-    ENVIADOS[chave] = {
-        "tipo": "basquete",
-        "linha": linha,
-        "jogo": f"{home} x {away}",
-        "verificado": False
-    }
-
-# 🔎 RESULTADO REAL FUTEBOL
-def verificar_resultados():
-    global greens, reds
-
-    url = "https://v3.football.api-sports.io/fixtures?live=all"
-    headers = {"x-apisports-key": FOOTBALL_API_KEY}
-
-    try:
-        data = requests.get(url, headers=headers).json()
-
-        for jogo in data.get("response", []):
-            home = jogo["teams"]["home"]["name"]
-            away = jogo["teams"]["away"]["name"]
-
-            gols_home = jogo["goals"]["home"] or 0
-            gols_away = jogo["goals"]["away"] or 0
-
-            total = gols_home + gols_away
-            status = jogo["fixture"]["status"]["short"]
-
-            if status == "FT":
-                for k, entrada in ENVIADOS.items():
-                    if entrada["verificado"] == False:
-
-                        if entrada["jogo"] == f"{home} x {away}":
-
-                            linha = entrada["linha"]
-
-                            if total > linha:
-                                greens += 1
-                                res = "✅ GREEN"
-                            else:
-                                reds += 1
-                                res = "❌ RED"
-
-                            bot.send_message(CHAT_ID, f"""
-🏁 RESULTADO FINAL
-
-⚔️ {home} x {away}
-📈 Placar: {gols_home} x {gols_away}
-
-{res}
-""")
-
-                            entrada["verificado"] = True
-
-    except Exception as e:
-        print(e)
+    ENVIADOS.add(chave)
 
 # 🔁 LOOP
 def loop():
@@ -231,47 +150,20 @@ def loop():
             futebol = buscar_futebol()
             basquete = buscar_basquete()
 
-            for h, a, l, linha, tipo, o in futebol:
+            for h, a, l, linha, o in futebol:
                 enviar_futebol(h, a, l, linha, o)
 
             for h, a, linha, o in basquete:
                 enviar_basquete(h, a, linha, o)
 
-            verificar_resultados()
-
-            time.sleep(60)
+            time.sleep(90)
 
         except Exception as e:
-            print("Erro:", e)
+            print(e)
             time.sleep(10)
 
-# 📊 RELATÓRIO
-def relatorio():
-    global greens, reds
-
-    while True:
-        if time.strftime("%H:%M") == "00:00":
-            total = greens + reds
-            taxa = round((greens / total) * 100, 2) if total else 0
-
-            bot.send_message(CHAT_ID, f"""
-📊 RELATÓRIO DO DIA
-
-✅ Greens: {greens}
-❌ Reds: {reds}
-📈 Assertividade: {taxa}%
-""")
-
-            greens = 0
-            reds = 0
-            time.sleep(60)
-
-        time.sleep(30)
-
-# 🚀 THREADS
+# 🚀 START
 threading.Thread(target=loop).start()
-threading.Thread(target=relatorio).start()
 threading.Thread(target=bot.infinity_polling).start()
 
-# 🌐 SERVER
 app.run(host="0.0.0.0", port=8080)
